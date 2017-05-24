@@ -12,9 +12,17 @@ Created on Sat May 20 16:09:06 2017
 """
 import tensorflow as tf
 from tensorflow.contrib import rnn
-from tensorflow.python.ops import  array_ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.math_ops import sigmoid, tanh
 from tensorflow.python.ops import variable_scope as vs
+
+def weight_variable(shape):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial)
+
+def bias_variable(shape):
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial)
 
 def _default_conv(args, output_size, k_size=3,
           bias=True, bias_start=0.0, scope=None):
@@ -44,7 +52,7 @@ def _default_conv(args, output_size, k_size=3,
 
     # a single conv layer
     with vs.variable_scope(scope or "Conv"):
-        kernel = vs.get_variable("Kernel", [k_size, k_size, channels, output_size])
+        kernel = weight_variable([k_size, k_size, channels, output_size])
     if len(args) == 1:
       res = tf.nn.conv2d(args[0], kernel, [1, 1, 1, 1], padding='SAME')
     else:
@@ -53,7 +61,7 @@ def _default_conv(args, output_size, k_size=3,
     if not bias:
         return res
     else:
-        bias_term = vs.get_variable("Bias", [output_size], initializer=tf.constant_initializer(bias_start))
+        bias_term = bias_variable([output_size])
         return res + bias_term
 
 class  CLSTMCell(rnn.RNNCell):
