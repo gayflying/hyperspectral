@@ -44,10 +44,10 @@ patch_size = 16
 patch_height = patch_size
 patch_width = patch_size
 batch_size_train = 32
-batch_size_test = 1000
+batch_size_test = 2000
 lr = 1e-3
 drop_out = 0.5
-log_steps = 10
+log_steps = 100
 '''
 TODO
 1. complete multi layer conv
@@ -129,7 +129,7 @@ def run_training():
             sess.run(init_op)
             step = 1
             tic = time.time()
-            while step<1000:
+            while step<5000:
                 batch = paviaU.next_batch(batch_size_train, train=True, patch_size=patch_size)
                 sess.run(train_op, feed_dict={images: batch[0], labels: batch[1], batch_size: batch_size_train, keep_prob: drop_out})
                 if step%log_steps == 0:

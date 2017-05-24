@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.io as sio
 from collections import defaultdict
+import utils
 
 
 pavias_train_dict = {
@@ -121,6 +122,7 @@ class paviaU_dataset():
             key = np.random.choice(self.dict_keys)
             sample_index = np.random.choice(list(range(len(dict[key]))))
             cube = get_patch_cube(self._x, dict[key][sample_index], patch_size=patch_size)
+            cube = utils.argument_cube(cube)
             cube_batch.append(cube)
             if one_hot:
                 one_hot_key = np.zeros(9)
