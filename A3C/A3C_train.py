@@ -8,7 +8,7 @@ import os
 import time
 import signal
 
-from A3C_network import GameACFFNetwork
+from A3C_network import GameACFFNetwork, GameACLSTMNetwork
 from A3C_thread import A3CTrainingThread
 from A3C_config import *
 
@@ -33,7 +33,10 @@ global_t = 0
 
 stop_requested = False
 
-global_network = GameACFFNetwork(args.action_size, -1, device)
+if args.use_lstm:
+    global_network = GameACLSTMNetwork(args.action_size, -1, device)
+else:
+    global_network = GameACFFNetwork(args.action_size, -1, device)
 
 learning_rate_input = tf.placeholder("float")
 

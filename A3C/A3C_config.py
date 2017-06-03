@@ -10,7 +10,7 @@ parser.add_argument('--game', type=str, default='Breakout-v0',
 parser.add_argument('--use_gpu', type=bool, default=False)
 
 # model parameters
-parser.add_argument('--use_lstm', type=bool, default=False,
+parser.add_argument('--use_lstm', type=bool, default=True,
                     help='wether use lstm network')
 parser.add_argument('--frames', type=int, default=4,
                     help='the num of frames that a state contains')

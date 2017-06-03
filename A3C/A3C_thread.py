@@ -5,7 +5,7 @@ import random
 import time
 import sys
 
-from A3C_network import GameACFFNetwork
+from A3C_network import GameACFFNetwork, GameACLSTMNetwork
 from A3C_config import *
 import utils
 import gym
@@ -25,7 +25,10 @@ class A3CTrainingThread(object):
         self.max_global_time_step = max_global_time_step
         self.terminal_end = True
 
-        self.local_network = GameACFFNetwork(args.action_size, thread_index, device)
+        if args.use_lstm:
+            self.local_network = GameACLSTMNetwork(args.action_size, thread_index, device)
+        else:
+            self.local_network = GameACFFNetwork(args.action_size, thread_index, device)
 
         self.local_network.prepare_loss(args.entropy_beta)
 
@@ -87,6 +90,8 @@ class A3CTrainingThread(object):
         if self.terminal_end:
             self.state = self.env.reset()
             self.terminal_end = False
+            if args.use_lstm:
+                self.local_network.reset_state()
 
         # t_max times loop
         for i in range(args.local_t_max):
@@ -98,9 +103,9 @@ class A3CTrainingThread(object):
             actions.append(action_index)
             values.append(value_)
 
-            if (self.thread_index == 0) and (self.local_t % args.log_interval == 0):
-                print("pi={}".format(pi_))
-                print(" V={}".format(value_))
+            # if (self.thread_index == 0) and (self.local_t % args.log_interval == 0):
+            #     print("pi={}".format(pi_))
+            #     print(" V={}".format(value_))
 
             # process game and receive game result
             # state contain the next-step-state
@@ -149,7 +154,20 @@ class A3CTrainingThread(object):
 
         cur_learning_rate = self._anneal_learning_rate(global_t)
 
-        sess.run( self.apply_gradients,
+        if args.use_lstm:
+            batch_si.reverse()
+            batch_a.reverse()
+            batch_td.reverse()
+            batch_R.reverse()
+            sess.run( self.apply_gradients,
+                feed_dict = {   self.local_network.s: batch_si,
+                                self.local_network.a: batch_a,
+                                self.local_network.td: batch_td,
+                                self.local_network.r: batch_R,
+                                self.local_network.step_size: [len(batch_a)],
+                                self.learning_rate_input: cur_learning_rate} )
+        else:
+            sess.run( self.apply_gradients,
                 feed_dict = {   self.local_network.s: batch_si,
                                 self.local_network.a: batch_a,
                                 self.local_network.td: batch_td,

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import tensorflow as tf
+from tensorflow.contrib import rnn
 import numpy as np
 from A3C_config import *
 
@@ -162,7 +163,88 @@ class GameACFFNetwork(GameACNetwork):
         return the list of all variables in this network
         '''
         return [self.W_conv1, self.b_conv1,
-                        self.W_conv2, self.b_conv2,
-                        self.W_fc1, self.b_fc1,
-                        self.W_fc2, self.b_fc2,
-                        self.W_fc3, self.b_fc3]
+                self.W_conv2, self.b_conv2,
+                self.W_fc1, self.b_fc1,
+                self.W_fc2, self.b_fc2,
+                self.W_fc3, self.b_fc3]
+
+class GameACLSTMNetwork(GameACNetwork):
+    def __init__(self,
+                 action_size,
+                 thread_index,
+                 device="/cpu:0"):
+        GameACNetwork.__init__(self, action_size, thread_index, device)
+        scope_name = "net_" + str(self._thread_index)
+        with tf.device(self._device), tf.variable_scope(scope_name) as scope:
+            self.W_conv1, self.b_conv1 = self._conv_variable([8, 8, 4, 16])  # stride=4
+            self.W_conv2, self.b_conv2 = self._conv_variable([4, 4, 16, 32]) # stride=2
+
+            self.W_fc1, self.b_fc1 = self._fc_variable([3200, 256])
+
+            # weight for policy output layer
+            self.W_fc2, self.b_fc2 = self._fc_variable([256, action_size])
+
+            # weight for value output layer
+            self.W_fc3, self.b_fc3 = self._fc_variable([256, 1])
+
+            # state (input)
+            self.s = tf.placeholder("float", [None, 80, 80, 4])
+
+            h_conv1 = tf.nn.relu(self._conv2d(self.s,  self.W_conv1, 4) + self.b_conv1)
+            h_conv2 = tf.nn.relu(self._conv2d(h_conv1, self.W_conv2, 2) + self.b_conv2)
+
+            h_conv2_flat = tf.reshape(h_conv2, [-1, 3200])
+
+            h_fc1 = tf.nn.relu(tf.matmul(h_conv2_flat, self.W_fc1) + self.b_fc1)
+
+            h_fc1 = tf.reshape(h_fc1, [1,-1,256])
+
+            # lstm
+            with tf.variable_scope("LSTM") as vs:
+                lstm_cell = rnn.BasicLSTMCell(num_units = 256)
+                self.step_size = tf.placeholder(tf.int32, [1])
+                # init_state is all zeros for initilizing LSTM
+                # lstm_state is the state for run the LSTM
+                # state_out is the result-state, it will be copied to lstm_state in three functions: run_policy_and_value, run_policy, run_value. Be careful when call these three functions.
+                self.init_state = lstm_cell.zero_state(1, tf.float32)
+                self.lstm_state = self.init_state
+                lstm_out, state_out = tf.nn.dynamic_rnn(lstm_cell,
+                    inputs = h_fc1,
+                    initial_state = self.lstm_state,
+                    sequence_length = self.step_size,
+                    time_major = False)
+                self.state_out = state_out[-1]
+                # fetch all variables in LSTM
+                self.lstm_var = [ v for v in tf.global_variables() if v.name.startswith(vs.name)]
+            h_lstm = tf.reshape(lstm_out, [-1, 256])
+
+            # policy (output)
+            self.pi = tf.nn.softmax(tf.matmul(h_lstm, self.W_fc2) + self.b_fc2)
+            # value (output)
+            v_ = tf.matmul(h_lstm, self.W_fc3) + self.b_fc3
+            self.v = tf.reshape( v_, [-1] )
+
+    def reset_state(self):
+        self.lstm_state = self.init_state
+
+    def run_policy_and_value(self, sess, s_t):
+        pi_out, v_out, state_out = sess.run([self.pi, self.v, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
+        self.lstm_state = state_out
+        return (pi_out[0], v_out[0])
+
+    def run_value(self, sess, s_t):
+        v_out, state_out = sess.run([self.v, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
+        self.lstm_state = state_out
+        return v_out[0]
+
+    def run_policy(self, sess, s_t):
+        pi_out, state_out = sess.run([self.pi, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
+        self.lstm_state = state_out
+        return pi_out[0]
+
+    def get_vars(self):
+        return [self.W_conv1, self.b_conv1,
+                self.W_conv2, self.b_conv2,
+                self.W_fc1, self.b_fc1,
+                self.W_fc2, self.b_fc2,
+                self.W_fc3, self.b_fc3] + self.lstm_var
