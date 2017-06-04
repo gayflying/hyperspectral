@@ -174,6 +174,7 @@ class GameACLSTMNetwork(GameACNetwork):
                  thread_index,
                  device="/cpu:0"):
         GameACNetwork.__init__(self, action_size, thread_index, device)
+
         scope_name = "net_" + str(self._thread_index)
         with tf.device(self._device), tf.variable_scope(scope_name) as scope:
             self.W_conv1, self.b_conv1 = self._conv_variable([8, 8, 4, 16])  # stride=4
@@ -203,20 +204,22 @@ class GameACLSTMNetwork(GameACNetwork):
             with tf.variable_scope("LSTM") as vs:
                 lstm_cell = rnn.BasicLSTMCell(num_units = 256)
                 self.step_size = tf.placeholder(tf.int32, [1])
-                # init_state is all zeros for initilizing LSTM
-                # lstm_state is the state for run the LSTM
-                # state_out is the result-state, it will be copied to lstm_state in three functions: run_policy_and_value, run_policy, run_value. Be careful when call these three functions.
-                self.init_state = lstm_cell.zero_state(1, tf.float32)
-                self.lstm_state = self.init_state
-                lstm_out, state_out = tf.nn.dynamic_rnn(lstm_cell,
+                # initial_lstm_state* is the placeholder for receive state outside the function
+                # lstm_state is the operator that calculate the last state of LSTM
+                # lstm_state_out is the tensor that contains the result of lstm_state. When run the network, feed lstm_state_out to lstm_state.
+                self.initial_lstm_state0 = tf.placeholder(tf.float32, [1,256])
+                self.initial_lstm_state1 = tf.placeholder(tf.float32, [1, 256])
+                self.initial_lstm_state = rnn.LSTMStateTuple(self.initial_lstm_state0, self.initial_lstm_state1)
+
+                lstm_outputs, self.lstm_state = tf.nn.dynamic_rnn(lstm_cell,
                     inputs = h_fc1,
-                    initial_state = self.lstm_state,
+                    initial_state = self.initial_lstm_state,
                     sequence_length = self.step_size,
                     time_major = False)
-                self.state_out = state_out[-1]
                 # fetch all variables in LSTM
                 self.lstm_var = [ v for v in tf.global_variables() if v.name.startswith(vs.name)]
-            h_lstm = tf.reshape(lstm_out, [-1, 256])
+
+            h_lstm = tf.reshape(lstm_outputs, [-1, 256])
 
             # policy (output)
             self.pi = tf.nn.softmax(tf.matmul(h_lstm, self.W_fc2) + self.b_fc2)
@@ -224,23 +227,34 @@ class GameACLSTMNetwork(GameACNetwork):
             v_ = tf.matmul(h_lstm, self.W_fc3) + self.b_fc3
             self.v = tf.reshape( v_, [-1] )
 
+            self.reset_state()
+
     def reset_state(self):
-        self.lstm_state = self.init_state
+        self.lstm_state_out = rnn.LSTMStateTuple(np.zeros([1, 256]),np.zeros([1, 256]))
 
     def run_policy_and_value(self, sess, s_t):
-        pi_out, v_out, state_out = sess.run([self.pi, self.v, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
-        self.lstm_state = state_out
+        pi_out, v_out, self.lstm_state_out = sess.run([self.pi, self.v, self.lstm_state], feed_dict = {self.s : [s_t],
+            self.initial_lstm_state0: self.lstm_state_out[0],
+            self.initial_lstm_state1: self.lstm_state_out[1],
+            self.step_size : [1]})
         return (pi_out[0], v_out[0])
 
-    def run_value(self, sess, s_t):
-        v_out, state_out = sess.run([self.v, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
-        self.lstm_state = state_out
-        return v_out[0]
-
     def run_policy(self, sess, s_t):
-        pi_out, state_out = sess.run([self.pi, self.state_out], feed_dict = {self.s : [s_t], self.step_size : [1]})
-        self.lstm_state = state_out
+        pi_out, self.lstm_state_out = sess.run([self.pi, self.lstm_state], feed_dict = {self.s : [s_t],
+            self.initial_lstm_state0: self.lstm_state_out[0],
+            self.initial_lstm_state1: self.lstm_state_out[1],
+            self.step_size : [1]})
         return pi_out[0]
+
+    def run_value(self, sess, s_t):
+        prev_lstm_state_out = self.lstm_state_out
+        v_out, _ = sess.run([self.v, self.lstm_state], feed_dict = {
+            self.s : [s_t],
+            self.initial_lstm_state0: self.lstm_state_out[0],
+            self.initial_lstm_state1: self.lstm_state_out[1],
+            self.step_size : [1]})
+        self.lstm_state_out = prev_lstm_state_out
+        return v_out[0]
 
     def get_vars(self):
         return [self.W_conv1, self.b_conv1,

@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+import utils
+import gym
+
 import tensorflow as tf
 import threading
 import numpy as np
@@ -11,11 +14,6 @@ import signal
 from A3C_network import GameACFFNetwork, GameACLSTMNetwork
 from A3C_thread import A3CTrainingThread
 from A3C_config import *
-
-
-import utils
-import gym
-
 
 def log_uniform(lo, hi, rate):
     log_lo = math.log(lo)
@@ -52,7 +50,8 @@ for i in range(args.thread_num):
 
 # prepare session
 init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-with tf.Session() as sess:
+config = tf.ConfigProto(allow_soft_placement = True)
+with tf.Session(config=config) as sess:
     sess.run(init_op)
 
     # summary for tensorboard

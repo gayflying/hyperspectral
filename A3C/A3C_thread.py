@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
+from A3C_network import GameACFFNetwork, GameACLSTMNetwork
+from A3C_config import *
+import utils
+import gym
+
 import tensorflow as tf
 import numpy as np
 import random
 import time
 import sys
-
-from A3C_network import GameACFFNetwork, GameACLSTMNetwork
-from A3C_config import *
-import utils
-import gym
 
 class A3CTrainingThread(object):
     def __init__(self,
@@ -164,6 +164,7 @@ class A3CTrainingThread(object):
                                 self.local_network.a: batch_a,
                                 self.local_network.td: batch_td,
                                 self.local_network.r: batch_R,
+                                self.local_network.initial_lstm_state: self.local_network.lstm_state_out,
                                 self.local_network.step_size: [len(batch_a)],
                                 self.learning_rate_input: cur_learning_rate} )
         else:
